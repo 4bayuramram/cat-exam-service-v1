@@ -12,16 +12,27 @@ const { createClient } = require("@supabase/supabase-js");
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-// inisialisasi client
+// inisialisasi client Supabase
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Import routes
+const authRoutes = require("../02_routes/auth");
+
+// Middleware untuk parsing JSON, jika diperlukan
+app.use(express.json());
+
+// Middleware untuk parsing form data, jika diperlukan
+app.use(express.urlencoded({ extended: true }));
+
+// Gunakan route auth
+app.use("/auth", authRoutes);
 
 // Root route
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 
-// core server
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
-  console.log("server lokal aktif");
 });
