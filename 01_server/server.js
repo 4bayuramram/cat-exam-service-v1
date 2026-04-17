@@ -3,7 +3,7 @@ const app = express();
 const PORT = 3000;
 
 // load dotenv
-require("dotenv").config();
+require("dotenv").config({ path: "../.env" });
 
 // import supabase
 const { createClient } = require("@supabase/supabase-js");
@@ -18,6 +18,11 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // Import routes
 const authRoutes = require("../02_routes/auth");
 
+//import register
+const registerRoutes = require("../02_routes/register");
+
+
+
 // Middleware untuk parsing JSON, jika diperlukan
 app.use(express.json());
 
@@ -26,6 +31,9 @@ app.use(express.urlencoded({ extended: true }));
 
 // Gunakan route auth
 app.use("/auth", authRoutes);
+
+//gunakan routes register 
+app.use("/auth", registerRoutes);
 
 // Root route
 app.get("/", (req, res) => {
@@ -36,3 +44,6 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
+
+
+
