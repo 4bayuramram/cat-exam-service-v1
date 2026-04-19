@@ -21,37 +21,114 @@ passport.use(
       callbackURL: "http://localhost:3000/auth/google/callback",
     },
     async (accessToken, refreshToken, profile, done) => {
-      // Verifikasi atau simpan user ke dalam database (Supabase)
-      const { data, error } = await supabase
-        .from("users")
-        .upsert([
-          {
-            google_id: profile.id,
-            email: profile.emails[0].value,
-            name: profile.displayName,
-            avatar: profile.photos[0].value,
-          },
-        ])
-        .single();
+      try {
+        const google_id = profile.id;
+        const email = profile.emails?.[0]?.value;
+        const name = profile.displayName;
+        const avatar = profile.photos?.[0]?.value;
 
-      if (error) {
-        return done(error, null);
+        // 1. cek berdasarkan google_id
+        let { data: user, error } = await supabase
+          .from("users")
+          .select("*")
+          .eq("google_id", google_id)
+          .single();
+
+        if (error && error.code !== "PGRST116") {
+          return done(error, null);
+        }
+
+        // 2. jika tidak ada, cek berdasarkan email
+        if (!user) {
+          const { data: existingUser, error: emailError } = await supabase
+            .from("users")
+            .select("*")
+            .eq("email", email)
+            .single();
+
+          if (emailError && emailError.code !== "PGRST116") {
+            return done(emailError, null);
+          }
+
+          // 3. jika email sudah ada → update jadi akun Google
+          if (existingUser) {
+            const { data: updatedUser, error: updateError } = await supabase
+              .from("users")
+              .update({
+                google_id,
+                name,
+                avatar,
+                updated_at: new Date(),
+              })
+              .eq("id", existingUser.id)
+              .select("*")
+              .single();
+
+            if (updateError) return done(updateError, null);
+
+            return done(null, updatedUser);
+          }
+
+          // 4. jika user baru → insert
+          const { data: newUser, error: insertError } = await supabase
+            .from("users")
+            .insert([
+              {
+                google_id,
+                email,
+                name,
+                password: null,
+                avatar,
+              },
+            ])
+            .select("*")
+            .single();
+
+          if (insertError) return done(insertError, null);
+
+          return done(null, newUser);
+        }
+
+        // 5. jika user sudah ada → update data terbaru
+        const { data: updatedUser, error: updateError } = await supabase
+          .from("users")
+          .update({
+            email,
+            name,
+            avatar,
+            updated_at: new Date(),
+          })
+          .eq("id", user.id)
+          .select("*")
+          .single();
+
+        if (updateError) return done(updateError, null);
+
+        return done(null, updatedUser);
+      } catch (err) {
+        return done(err, null);
       }
-
-      return done(null, data);
     }
   )
 );
 
+// serialize user (simpan id ke session)
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
 
+// deserialize user (ambil semua kolom dari DB)
 passport.deserializeUser(async (id, done) => {
-  const { data, error } = await supabase.from("users").select("*").eq("id", id).single();
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", id)
+    .single();
+
   if (error) {
     return done(error, null);
   }
+
   done(null, data);
 });
 
@@ -67,24 +144,34 @@ router.use(
 router.use(passport.initialize());
 router.use(passport.session());
 
-// Route untuk login dengan Google
+// Route login Google
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
-// Callback route setelah login dengan Google
+// Callback Google
 router.get(
   "/google/callback",
   passport.authenticate("google", { failureRedirect: "/" }),
   (req, res) => {
-    res.redirect("/dashboard"); // Redirect ke halaman dashboard setelah login berhasil
+    res.redirect("/dashboard");
   }
 );
 
-// Route untuk dashboard
+// Dashboard
 router.get("/dashboard", (req, res) => {
   if (!req.user) {
-    return res.redirect("/"); // Jika user belum login, redirect ke halaman utama
+    return res.redirect("/");
   }
-  res.send(`Welcome to the dashboard, ${req.user.name}`);
+
+  res.send(`
+    <h1>Dashboard</h1>
+    <p>ID: ${req.user.id}</p>
+    <p>Google ID: ${req.user.google_id}</p>
+    <p>Email: ${req.user.email}</p>
+    <p>Name: ${req.user.name}</p>
+    <p>Avatar: <img src="${req.user.avatar}" width="50"/></p>
+    <p>Created At: ${req.user.created_at}</p>
+    <p>Updated At: ${req.user.updated_at}</p>
+  `);
 });
 
 module.exports = router;
